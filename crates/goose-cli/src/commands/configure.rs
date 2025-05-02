@@ -196,6 +196,11 @@ pub async fn handle_configure() -> Result<(), Box<dyn Error>> {
                 "Goose Settings",
                 "Set the Goose Mode, Tool Output, Tool Permissions, Experiment and more",
             )
+            .item(
+                "context",
+                "Context Strategy",
+                "Set how Goose handles context length exceeded errors",
+            )
             .interact()?;
 
         match action {
@@ -204,6 +209,7 @@ pub async fn handle_configure() -> Result<(), Box<dyn Error>> {
             "remove" => remove_extension_dialog(),
             "settings" => configure_settings_dialog().await.and(Ok(())),
             "providers" => configure_provider_dialog().await.and(Ok(())),
+            "context" => configure_context_strategy_dialog().await.and(Ok(())),
             _ => unreachable!(),
         }
     }
@@ -809,6 +815,11 @@ pub async fn configure_settings_dialog() -> Result<(), Box<dyn Error>> {
             "Toggle Experiment",
             "Enable or disable an experiment feature",
         )
+        .item(
+            "context",
+            "Context Strategy",
+            "Set how Goose handles context length exceeded errors",
+        )
         .interact()?;
 
     match setting_type {
@@ -823,6 +834,9 @@ pub async fn configure_settings_dialog() -> Result<(), Box<dyn Error>> {
         }
         "experiment" => {
             toggle_experiments_dialog()?;
+        }
+        "context" => {
+            configure_context_strategy_dialog().await.and(Ok(()))?;
         }
         _ => unreachable!(),
     };
@@ -1104,5 +1118,49 @@ pub async fn configure_tool_permissions_dialog() -> Result<(), Box<dyn Error>> {
         tool.name, permission_label
     ))?;
 
+    Ok(())
+}
+
+/// Dialog for configuring the context strategy
+pub async fn configure_context_strategy_dialog() -> Result<(), Box<dyn Error>> {
+    let config = Config::global();
+    let current_strategy = config.get_param("GOOSE_CONTEXT_STRATEGY")
+        .unwrap_or(Value::String("truncate".to_string()));
+
+    let strategy = cliclack::select("How should Goose handle context length exceeded errors?")
+        .item(
+            "truncate",
+            "Truncate (default)",
+            "Remove oldest messages to fit within context limit",
+        )
+        .item(
+            "summarize",
+            "Summarize",
+            "Summarize older messages to preserve context",
+        )
+        .item(
+            "clear",
+            "Clear",
+            "Clear all messages except the last user message",
+        )
+        .item(
+            "manual",
+            "Manual Delete",
+            "Let user manually delete specific messages",
+        )
+        .initial_value(current_strategy.as_str().unwrap_or("truncate"))
+        .interact()?;
+
+    config.set_param("GOOSE_CONTEXT_STRATEGY", Value::String(strategy.to_string()))?;
+
+    let strategy_description = match strategy {
+        "truncate" => "Goose will remove oldest messages to fit within context limit",
+        "summarize" => "Goose will summarize older messages to preserve context",
+        "clear" => "Goose will clear all messages except the last user message",
+        "manual" => "Goose will prompt for manual message deletion",
+        _ => unreachable!(),
+    };
+
+    cliclack::outro(format!("Context strategy set to: {}", strategy_description))?;
     Ok(())
 }
